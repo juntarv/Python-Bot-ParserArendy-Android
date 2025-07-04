@@ -1,0 +1,12 @@
+{
+  "selected_bots": [
+    "banda_rent_apps_bot",
+    "wwapps_bot",
+    "td_appsbot"
+  ],
+  "target_channel": -1002568412343,
+  "google_sheet_id": "16vssvhkTnjBcY_81ABQJccvP7goDn_GaaOhqekNIenI",
+  "sheet_name": "Мониторинг",
+  "days_to_load": 30,
+  "delay_between_messages": 10
+}
