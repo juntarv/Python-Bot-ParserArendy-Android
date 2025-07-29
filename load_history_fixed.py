@@ -50,7 +50,7 @@ def parse_message_by_bot(message, bot_username):
     
     # Проверяем, нужно ли пропустить сообщение
     for skip_pattern in parser.get('skip_patterns', []):
-        if re.search(skip_pattern, text):
+        if re.search(skip_pattern, text, re.IGNORECASE):
             return None
     
     result = {
@@ -59,7 +59,13 @@ def parse_message_by_bot(message, bot_username):
         'bundle': None,
         'url': None,
         'category': None,
-        'is_bundle': False
+        'is_bundle': False,
+        'geo_restrictions': None,
+        'sources': None,
+        'has_onelink': False,
+        'has_macro_system': False,
+        'redirect_to': None,
+        'original_app': None
     }
     
     # Извлекаем URL из сообщения
@@ -68,26 +74,98 @@ def parse_message_by_bot(message, bot_username):
     
     # Определяем тип сообщения
     for pattern in parser.get('new_app_patterns', []):
-        if re.search(pattern, text):
+        if re.search(pattern, text, re.IGNORECASE):
             result['type'] = 'new_app'
             break
     
     if not result['type']:
         for pattern in parser.get('ban_patterns', []):
-            if re.search(pattern, text):
+            if re.search(pattern, text, re.IGNORECASE):
                 result['type'] = 'ban'
+                break
+    
+    # Проверяем на redirect (перенаправление трафика)
+    if not result['type'] and parser.get('redirect_patterns'):
+        for pattern in parser.get('redirect_patterns', []):
+            if re.search(pattern, text, re.IGNORECASE):
+                result['type'] = 'redirect'
                 break
     
     if not result['type']:
         return None
     
+    # Специальная обработка для Banda Apps
+    if bot_username == 'banda_rent_apps_bot':
+        # Для новых приложений
+        if result['type'] == 'new_app':
+            # Извлекаем название (убираем эмодзи)
+            name_match = re.search(parser['name_pattern'], text, re.IGNORECASE)
+            if name_match:
+                name_text = name_match.group(1).strip()
+                # Убираем эмодзи из начала названия
+                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
+                result['name'] = name_text.strip()
+            
+            # Извлекаем гео-ограничения
+            if parser.get('geo_pattern'):
+                geo_match = re.search(parser['geo_pattern'], text)
+                if geo_match:
+                    result['geo_restrictions'] = geo_match.group(1).strip()
+            
+            # Извлекаем источники трафика
+            if parser.get('sources_pattern'):
+                sources_match = re.search(parser['sources_pattern'], text)
+                if sources_match:
+                    result['sources'] = sources_match.group(1).strip()
+            
+            # Проверяем поддержку OneLink
+            if parser.get('onelink_pattern'):
+                result['has_onelink'] = bool(re.search(parser['onelink_pattern'], text, re.IGNORECASE))
+            
+            # Проверяем систему автосбора макросов
+            if parser.get('macro_pattern'):
+                result['has_macro_system'] = bool(re.search(parser['macro_pattern'], text, re.IGNORECASE))
+        
+        # Для банов
+        elif result['type'] == 'ban':
+            ban_name_match = re.search(parser['ban_name_pattern'], text)
+            if ban_name_match:
+                name_text = ban_name_match.group(1).strip()
+                # Убираем эмодзи
+                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
+                result['name'] = name_text.strip()
+            
+            # Ищем URL в скобках
+            if not result['url']:
+                url_match = re.search(r'\((https?://[^\)]+)\)', text)
+                if url_match:
+                    result['url'] = url_match.group(1)
+        
+        # Для редиректов (новый тип)
+        elif result['type'] == 'redirect':
+            # Извлекаем исходное приложение и новое
+            redirect_match = re.search(parser.get('redirect_name_pattern', ''), text)
+            if redirect_match:
+                result['redirect_to'] = redirect_match.group(1).strip()
+                result['bundle'] = redirect_match.group(2).strip()
+            
+            # Ищем оригинальное забаненное приложение
+            original_match = re.search(r'Application\s+(.+?)\s+BANNED', text)
+            if original_match:
+                result['original_app'] = original_match.group(1).strip()
+                result['original_app'] = re.sub(r'^[^\w\s]+\s*', '', result['original_app'])
+        
+        # Извлекаем bundle из URL для всех типов
+        if not result['bundle'] and result['url']:
+            result['bundle'] = extract_bundle_from_url(result['url'])
+    
+    # Обработка для других ботов (оставляем как было)
+    else:
     # Извлекаем название приложения
     if result['type'] == 'ban' and 'ban_name_pattern' in parser:
-        # Особый паттерн для банов
         name_match = re.search(parser['ban_name_pattern'], text)
         if name_match:
             name_text = name_match.group(1).strip()
-            # Убираем эмодзи из названия
             name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
             result['name'] = name_text.strip()
     elif parser.get('name_pattern'):
@@ -95,18 +173,11 @@ def parse_message_by_bot(message, bot_username):
         if name_match:
             name_text = name_match.group(1).strip()
             
-            # Убираем эмодзи из названия для banda
-            if bot_username == 'banda_rent_apps_bot':
-                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-            
-            # Если URL встроен в название (как у wwapps_bot)
             if parser.get('url_in_name'):
-                # Извлекаем URL из названия
                 url_in_name = re.search(r'\(?(https?://[^\s\)]+)\)?', name_text)
                 if url_in_name:
                     if not result['url']:
                         result['url'] = url_in_name.group(1)
-                    # Убираем URL из названия
                     name_text = re.sub(r'\s*\(?(https?://[^\s\)]+)\)?', '', name_text).strip()
             
             result['name'] = name_text
@@ -119,14 +190,6 @@ def parse_message_by_bot(message, bot_username):
     
     # Если bundle не найден, но есть URL и нужно извлечь из него
     if not result['bundle'] and parser.get('extract_bundle_from_url') and result['url']:
-        result['bundle'] = extract_bundle_from_url(result['url'])
-    
-    # Для banda - также пытаемся найти URL в скобках после BANNED
-    if bot_username == 'banda_rent_apps_bot' and result['type'] == 'ban' and not result['url']:
-        # Ищем URL в формате (https://...)
-        url_match = re.search(r'\((https?://[^\)]+)\)', text)
-        if url_match:
-            result['url'] = url_match.group(1)
             result['bundle'] = extract_bundle_from_url(result['url'])
     
     # Извлекаем категорию (если есть)
@@ -215,6 +278,79 @@ def extract_app_name(text):
     
     return None
 
+def format_unified_message(parsed_data, bot_username, bot_display_name, message_date, original_text):
+    """Создает единообразно отформатированное сообщение для любого бота"""
+    
+    # Выбираем эмодзи в зависимости от типа
+    emoji_map = {
+        'new_app': '🚀',
+        'ban': '❌', 
+        'redirect': '🔄',
+        'update': '🔄',
+        'bundle': '📦'
+    }
+    
+    msg_type = parsed_data.get('type', 'other')
+    
+    # Для bundle приложений используем специальный эмодзи
+    if parsed_data.get('is_bundle') and msg_type == 'new_app':
+        emoji = emoji_map.get('bundle', '📦')
+        msg_type_display = f"{msg_type} (Bundle)"
+    else:
+        emoji = emoji_map.get(msg_type, '📨')
+        msg_type_display = msg_type
+    
+    # Базовая информация (одинаковая для всех ботов)
+    forward_text = f"""{emoji} **История от @{bot_username}**
+🤖 **Бот:** {bot_display_name}
+📅 **Время:** {message_date.strftime('%d.%m.%Y %H:%M')}
+🏷️ **Тип:** {msg_type_display}"""
+    
+    # Добавляем информацию в зависимости от типа сообщения
+    if msg_type == 'new_app':
+        if parsed_data.get('name'):
+            forward_text += f"\n📱 **Приложение:** {parsed_data['name']}"
+        
+        # Дополнительная информация для Banda Apps
+        if bot_username == 'banda_rent_apps_bot':
+            if parsed_data.get('geo_restrictions'):
+                forward_text += f"\n🌍 **Гео-ограничения:** {parsed_data['geo_restrictions']}"
+            if parsed_data.get('sources'):
+                forward_text += f"\n📊 **Источники:** {parsed_data['sources']}"
+            if parsed_data.get('has_onelink'):
+                forward_text += f"\n🔗 **OneLink:** Поддерживается"
+            if parsed_data.get('has_macro_system'):
+                forward_text += f"\n🤖 **Автосбор макросов:** Есть"
+        
+        # Категория для других ботов
+        if parsed_data.get('category'):
+            forward_text += f"\n📂 **Категория:** {parsed_data['category']}"
+    
+    elif msg_type == 'ban':
+        if parsed_data.get('name'):
+            forward_text += f"\n📱 **Забанено:** {parsed_data['name']}"
+    
+    elif msg_type == 'redirect':
+        if parsed_data.get('original_app'):
+            forward_text += f"\n❌ **Забанено:** {parsed_data['original_app']}"
+        if parsed_data.get('redirect_to'):
+            forward_text += f"\n🔄 **Перенаправлено на:** {parsed_data['redirect_to']}"
+    
+    # Bundle ID (для всех типов если есть)
+    if parsed_data.get('bundle'):
+        forward_text += f"\n📦 **Bundle ID:** {parsed_data['bundle']}"
+    
+    # Оригинальное сообщение
+    forward_text += f"\n\n**Оригинальное сообщение:**\n{original_text}"
+    
+    # Ссылка (если есть)
+    if parsed_data.get('url'):
+        forward_text += f"\n\n🔗 **Ссылка:** {parsed_data['url']}"
+    
+    forward_text += f"\n\n{'---' * 10}"
+    
+    return forward_text
+
 async def load_history():
     await client.start(PHONE)
     print("✅ Подключено к Telegram")
@@ -276,6 +412,10 @@ async def load_history():
                         msg_type = 'new_app'
                     elif 'BANNED' in message.text and '‼️' in message.text:
                         should_forward = True
+                        # Проверяем, есть ли redirect
+                        if 'traffic was redirected to' in message.text:
+                            msg_type = 'redirect'
+                        else:
                         msg_type = 'ban'
                     elif '🎉 New iOS App 🎉' in message.text:
                         # iOS пропускаем
@@ -291,24 +431,14 @@ async def load_history():
                             parsed_data = parse_message_by_bot(message, 'banda_rent_apps_bot')
                             
                             if parsed_data:
-                                # Формируем текст для пересылки
-                                emoji = '🚀' if msg_type == 'new_app' else '❌'
-                                
-                                forward_text = f"""{emoji} **История от @banda_rent_apps_bot**
-🤖 **Бот:** Banda Apps
-📅 **Время:** {message.date.strftime('%d.%m.%Y %H:%M')}
-🏷️ **Тип:** {msg_type}
-{f'📱 **Приложение:** {parsed_data["name"]}' if parsed_data.get('name') else '📱 **Приложение:** [Не распознано]'}
-{f'📦 **Bundle ID:** {parsed_data["bundle"]}' if parsed_data.get('bundle') else ''}
-
-**Сообщение:**
-{message.text}"""
-
-                                # Добавляем ссылку
-                                if parsed_data.get('url'):
-                                    forward_text += f"\n\n🔗 **Ссылка:** {parsed_data['url']}"
-                                
-                                forward_text += f"\n\n{'---' * 10}"
+                                # Создаем единообразно отформатированное сообщение
+                                forward_text = format_unified_message(
+                                    parsed_data, 
+                                    'banda_rent_apps_bot', 
+                                    'Banda Apps', 
+                                    message.date, 
+                                    message.text
+                                )
                                 
                                 # Отправляем в канал
                                 await client.send_message(my_channel, forward_text)
@@ -364,28 +494,14 @@ async def load_history():
                 if not should_forward_message(message.text):
                     continue
                 
-                # Выбираем эмодзи
-                emoji = EMOJI.get(msg_type, EMOJI['other']) if USE_EMOJI else ''
-                if parsed_data.get('is_bundle') and msg_type == 'new_app':
-                    emoji = EMOJI.get('bundle', '📦')
-                
                 # Формируем текст для пересылки
-                forward_text = f"""{emoji} **История от @{bot_username}**
-🤖 **Бот:** {bot.first_name}
-📅 **Время:** {message.date.strftime('%d.%m.%Y %H:%M')}
-🏷️ **Тип:** {msg_type}{' (Bundle)' if parsed_data.get('is_bundle') else ''}
-{f'📱 **Приложение:** {parsed_data["name"]}' if parsed_data.get('name') else ''}
-{f'📦 **Bundle ID:** {parsed_data["bundle"]}' if parsed_data.get('bundle') else ''}
-{f'📂 **Категория:** {parsed_data["category"]}' if parsed_data.get('category') else ''}
-
-**Сообщение:**
-{message.text if message.text else '[Медиа-контент]'}"""
-
-                # Добавляем ссылку
-                if parsed_data.get('url'):
-                    forward_text += f"\n\n🔗 **Ссылка:** {parsed_data['url']}"
-                
-                forward_text += f"\n\n{'---' * 10}"
+                forward_text = format_unified_message(
+                    parsed_data,
+                    bot_username,
+                    bot.first_name,
+                    message.date,
+                    message.text
+                )
                 
                 try:
                     # Отправляем в канал

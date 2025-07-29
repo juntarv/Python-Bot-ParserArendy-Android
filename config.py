@@ -13,10 +13,11 @@ MY_CHANNEL_ID = -1002568412343  # ID вашего канала для перес
 # ========== БОТЫ КОНКУРЕНТОВ ==========
 COMPETITOR_BOTS = [
     'banda_rent_apps_bot',
-    'wwapps_bot',
-    'td_appsbot',
+    #'wwapps_bot',
+    #'td_appsbot',
     # Добавьте сюда всех ботов
 ]
+
 # ========== ПАРСЕРЫ ДЛЯ КАЖДОГО БОТА ==========
 # Настройки парсинга для каждого бота
 BOT_PARSERS = {
@@ -31,14 +32,34 @@ BOT_PARSERS = {
     },
     
     'banda_rent_apps_bot': {
-        'new_app_patterns': [r'🎉 New Android App 🎉'],
-        'ban_patterns': [r'BANNED', r'‼️ Application .+ BANNED ‼️'],
-        'skip_patterns': ['New iOS App', '🎉 New iOS App 🎉'],
-        'name_pattern': r'🎉 New Android App 🎉\s*\n\s*(.+?)(?:\n|$)',  # Название на следующей строке с пробелами
-        'ban_name_pattern': r'Application\s+(.+?)\s+BANNED',  # Для банов
-        'bundle_pattern': None,  # У них нет bundle в тексте
-        'url_in_ban': True,  # URL есть в сообщениях о бане
-        'extract_bundle_from_url': True  # Извлекать bundle из URL
+        'new_app_patterns': [
+            r'🎉 New Android App 🎉',
+            r'🎉\s*New Android App\s*🎉'
+        ],
+        'ban_patterns': [
+            r'BANNED',
+            r'‼️ Application .+ BANNED ‼️',
+            r'‼️\s*Application\s+.+\s+BANNED\s*‼️'
+        ],
+        'redirect_patterns': [
+            r'To avoid losses, the traffic was redirected to',
+            r'traffic was redirected to'
+        ],
+        'skip_patterns': [
+            'New iOS App', 
+            '🎉 New iOS App 🎉',
+            r'🎉\s*New iOS App\s*🎉'
+        ],
+        'name_pattern': r'🎉\s*New Android App\s*🎉\s*\n\s*(.+?)(?:\n|$)',
+        'ban_name_pattern': r'Application\s+(.+?)\s+BANNED',
+        'redirect_name_pattern': r'redirected to\s+(.+?)\s+([a-zA-Z0-9\.]+)\s*\(https',
+        'bundle_pattern': None,
+        'url_in_ban': True,
+        'extract_bundle_from_url': True,
+        'geo_pattern': r'🌏 The app is available in all geos except the following:\s*(.+?)(?:\n|$)',
+        'sources_pattern': r'➡️ Available sources:\s*(.+?)(?:\n|$)',
+        'onelink_pattern': r'❗️.*OneLink.*❗️',
+        'macro_pattern': r'❗️.*automatic collection of macros.*❗️'
     },
     
     'td_appsbot': {
@@ -48,7 +69,7 @@ BOT_PARSERS = {
         'name_pattern': r'Название приложения:\s*(.+?)(?:\n|$)',
         'bundle_pattern': r'Имя пакета:\s*([^\s\n]+)',
         'url_pattern': r'https://play\.google\.com/store/apps/details\?id=([^\s&]+)',
-        'ban_name_pattern': r'TDApps \| (.+?)(?:\n|$)'  # Особый паттерн для имени в бане
+        'ban_name_pattern': r'TDApps \| (.+?)(?:\n|$)'
     }
 }
 
@@ -108,7 +129,7 @@ for category, words in KEYWORDS.items():
     ALL_KEYWORDS.extend(words)
 
 # ========== НАСТРОЙКИ ЗАГРУЗКИ ИСТОРИИ ==========
-DAYS_TO_LOAD = 30  # За сколько дней загружать историю
+DAYS_TO_LOAD = 60  # За сколько дней загружать историю (увеличено для захвата приложений которые могли быть забанены позже)
 DELAY_BETWEEN_MESSAGES = 10  # Задержка между сообщениями (секунды)
 
 # ========== НАСТРОЙКИ ФИЛЬТРАЦИИ ==========
@@ -147,4 +168,4 @@ GOOGLE_CREDENTIALS_FILE = 'credentials.json'
 SHEET_NAME = 'Мониторинг'  # Или как вы назвали лист
 
 # Диапазон для записи (начальная строка)
-SHEET_RANGE = f'{SHEET_NAME}!A2:I'  # Начиная со второй строки (первая - заголовки)
+SHEET_RANGE = f'{SHEET_NAME}!A2:N'  # Начиная со второй строки (первая - заголовки), расширено до N для новых полей

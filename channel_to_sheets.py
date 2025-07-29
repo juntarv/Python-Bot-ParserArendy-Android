@@ -46,7 +46,13 @@ def parse_message_data(text):
         'url': None,
         'message_id': None,
         'bundle_id': None,
-        'bot_username': None  # Добавляем для хранения @username
+        'bot_username': None,  # Добавляем для хранения @username
+        'geo_restrictions': None,
+        'sources': None,
+        'has_onelink': False,
+        'has_macro_system': False,
+        'redirect_to': None,
+        'original_app': None
     }
     
     if not text:
@@ -82,15 +88,42 @@ def parse_message_data(text):
         data['type'] = type_str
         data['is_bundle'] = '(Bundle)' in type_str
     
-    # Извлекаем название приложения
-    app_match = re.search(r'📱\s*Приложение:\s*(.+?)(?:\n|$)', clean_text)
+    # Извлекаем название приложения (разные поля в зависимости от типа)
+    app_match = re.search(r'📱\s*(?:\*\*)?Приложение:(?:\*\*)?\s*(.+?)(?:\n|$)', clean_text)
+    if not app_match:
+        app_match = re.search(r'📱\s*(?:\*\*)?Забанено:(?:\*\*)?\s*(.+?)(?:\n|$)', clean_text)
     if app_match:
         data['app_name'] = app_match.group(1).strip()
+    
+    # Для редиректов - извлекаем оригинальное и новое приложение
+    if data['type'] == 'redirect':
+        original_match = re.search(r'❌\s*Забанено:\s*(.+?)(?:\n|$)', clean_text)
+        if original_match:
+            data['original_app'] = original_match.group(1).strip()
+        
+        redirect_match = re.search(r'🔄\s*Перенаправлено на:\s*(.+?)(?:\n|$)', clean_text)
+        if redirect_match:
+            data['redirect_to'] = redirect_match.group(1).strip()
+            # Для редиректов используем новое приложение как основное название
+            data['app_name'] = data['redirect_to']
     
     # Извлекаем Bundle ID
     bundle_match = re.search(r'📦\s*Bundle ID:\s*(.+?)(?:\n|$)', clean_text)
     if bundle_match:
         data['bundle_id'] = bundle_match.group(1).strip()
+    
+    # Извлекаем дополнительную информацию для Banda Apps
+    geo_match = re.search(r'🌍\s*Гео-ограничения:\s*(.+?)(?:\n|$)', clean_text)
+    if geo_match:
+        data['geo_restrictions'] = geo_match.group(1).strip()
+    
+    sources_match = re.search(r'📊\s*Источники:\s*(.+?)(?:\n|$)', clean_text)
+    if sources_match:
+        data['sources'] = sources_match.group(1).strip()
+    
+    # Проверяем наличие OneLink и автосбора макросов
+    data['has_onelink'] = bool(re.search(r'🔗\s*OneLink:\s*Поддерживается', clean_text))
+    data['has_macro_system'] = bool(re.search(r'🤖\s*Автосбор макросов:\s*Есть', clean_text))
     
     # Извлекаем URL
     url_match = re.search(r'🔗\s*Ссылка:\s*(.+?)(?:\n|$)', clean_text)
@@ -122,7 +155,15 @@ async def get_all_apps_from_channel():
     message_count = 0
     parsed_count = 0
     
+    # Сначала собираем ВСЕ сообщения
+    all_messages = []
     async for message in client.iter_messages(channel, limit=None):
+        all_messages.append(message)
+    
+    # Обрабатываем в обратном порядке (от старых к новым)
+    all_messages.reverse()
+    
+    for message in all_messages:
         if not message.text:
             continue
             
@@ -153,69 +194,130 @@ async def get_all_apps_from_channel():
             app_key = (data['bot'], data['app_name'], 'no_bundle')
         
         # Определяем, это выход или бан
-        if data['type'] and 'ban' in data['type'].lower():
-            # Это сообщение о бане
+        if data['type'] and ('ban' in data['type'].lower() or 'redirect' in data['type'].lower()):
+            # Это сообщение о бане или редиректе
             found = False
             
             # Для отладки
-            print(f"\n🔍 Обработка бана:")
+            print(f"\n🔍 Обработка бана/редиректа:")
+            print(f"   Тип: {data['type']}")
             print(f"   Бот: {data['bot']}")
             print(f"   Username: {data.get('bot_username', 'не найден')}")
             print(f"   Приложение: {data['app_name']}")
+            print(f"   Оригинальное (для redirect): {data.get('original_app', 'нет')}")
             print(f"   Bundle: {bundle}")
             
-            for key, app in list(apps.items()):
-                # Проверяем совпадение по разным критериям
+            # Для редиректов нужно искать оригинальное приложение
+            search_name = data.get('original_app') if data['type'] == 'redirect' else data['app_name']
+            
+            # Улучшенный поиск приложения
+            for app_key, app_data in list(apps.items()):
+                # Проверяем совпадение бота  
                 bot_match = False
                 
                 # Проверяем точное совпадение бота
-                if bots_match(key[0], data['bot']) or (data.get('bot_username') and bots_match(key[0], data['bot_username'])):
+                if bots_match(app_data['bot'], data['bot']) or (data.get('bot_username') and bots_match(app_data['bot'], data['bot_username'])):
                     bot_match = True
                 # Проверяем совпадение по username
-                elif data.get('bot_username') and key[0] == data['bot_username']:
+                elif data.get('bot_username') and app_data['bot'] == data['bot_username']:
                     bot_match = True
                 # Проверяем частичное совпадение (для случаев типа "Banda Apps" и "@banda_rent_apps_bot")
-                elif data['bot'] and key[0] and (data['bot'].lower() in key[0].lower() or key[0].lower() in data['bot'].lower()):
+                elif data['bot'] and app_data['bot'] and (data['bot'].lower() in app_data['bot'].lower() or app_data['bot'].lower() in data['bot'].lower()):
                     bot_match = True
                 
                 if not bot_match:
                     continue
                 
-                # Проверяем совпадение приложения
+                # Улучшенная проверка совпадения приложения
                 app_match = False
+                app_name_in_db = app_data['app_name']
                 
-                # Точное совпадение по названию
-                if key[1] == data['app_name']:
+                print(f"   Сравниваем: '{search_name}' с '{app_name_in_db}'")
+                
+                # ОТЛАДКА: детальная информация о сравнении
+                if search_name == 'Plinko Tap':
+                    print(f"   🔍 ОТЛАДКА для Plinko Tap:")
+                    print(f"      search_name: '{search_name}' (тип: {type(search_name)}, длина: {len(search_name)})")
+                    print(f"      app_name_in_db: '{app_name_in_db}' (тип: {type(app_name_in_db)}, длина: {len(app_name_in_db)})")
+                    print(f"      Равны ли? {search_name == app_name_in_db}")
+                    print(f"      search_name байты: {search_name.encode('utf-8')}")
+                    print(f"      app_name_in_db байты: {app_name_in_db.encode('utf-8')}")
+                
+                # 1. Точное совпадение по названию
+                if search_name and app_name_in_db == search_name:
                     app_match = True
-                # Нормализованное совпадение (убираем регистр и пробелы)
-                elif key[1].lower().strip() == data['app_name'].lower().strip():
+                    print(f"   ✅ Точное совпадение")
+                
+                # 2. Нормализованное совпадение (убираем регистр и пробелы)
+                elif search_name and app_name_in_db.lower().strip() == search_name.lower().strip():
                     app_match = True
-                # Совпадение по bundle
-                elif bundle and len(key) > 2 and key[2] == bundle:
-                    app_match = True
+                    print(f"   ✅ Нормализованное совпадение")
+                
+                # 3. Совпадение с удалением эмодзи и специальных символов
+                elif search_name and app_name_in_db:
+                    # Очищаем названия от эмодзи и спецсимволов
+                    clean_search = re.sub(r'[^\w\s]', '', search_name).strip().lower()
+                    clean_db = re.sub(r'[^\w\s]', '', app_name_in_db).strip().lower()
+                    
+                    if clean_search == clean_db:
+                        app_match = True
+                        print(f"   ✅ Совпадение после очистки: '{clean_search}' = '{clean_db}'")
+                
+                # 4. Частичное совпадение для случаев с небольшими различиями
+                elif search_name and app_name_in_db:
+                    # Убираем пробелы и сравниваем
+                    search_compact = search_name.replace(' ', '').lower()
+                    db_compact = app_name_in_db.replace(' ', '').lower()
+                    
+                    if search_compact == db_compact:
+                        app_match = True
+                        print(f"   ✅ Совпадение без пробелов")
                 
                 if app_match:
-                    apps[key]['ban_date'] = data['date']
-                    apps[key]['status'] = 'Забанено'
+                    # Обновляем информацию о бане
+                    apps[app_key]['ban_date'] = data['date']
+                    apps[app_key]['status'] = 'Забанено'
+                    
+                    # Для редиректов добавляем информацию о перенаправлении
+                    if data['type'] == 'redirect' and data.get('redirect_to'):
+                        apps[app_key]['redirect_to'] = data['redirect_to']
+                        apps[app_key]['status'] = f"Забанено → {data['redirect_to']}"
+                    
                     found = True
-                    print(f"   ✅ Найден и обновлен бан для: {app['app_name']}")
+                    print(f"   ✅ НАЙДЕН И ОБНОВЛЕН БАН для: {app_data['app_name']}")
+                    print(f"   📅 Дата бана: {data['date']}")
+                    print(f"   📊 Новый статус: {apps[app_key]['status']}")
                     break
+                else:
+                    print(f"   ❌ Не совпало")
             
             if not found:
-                print(f"   ⚠️ Не найдено приложение для бана")
-                print(f"   Существующие ключи приложений от этого бота:")
-                for key in apps.keys():
-                    if data['bot'] in str(key[0]) or (data.get('bot_username') and data['bot_username'] in str(key[0])):
-                        print(f"     - {key}")
+                print(f"   ⚠️ НЕ НАЙДЕНО приложение для бана/редиректа")
+                print(f"   🔍 Ищем по названию: '{search_name}'")
+                print(f"   📦 Bundle: '{bundle}'")
+                print(f"   📋 Существующие приложения от этого бота:")
+                
+                # Показываем только приложения от того же бота
+                bot_apps = []
+                for app_key, app_data in apps.items():
+                    if (data['bot'] and data['bot'].lower() in app_data['bot'].lower()) or \
+                       (data.get('bot_username') and data['bot_username'] in app_data['bot']):
+                        bot_apps.append((app_data['app_name'], app_data.get('bundle_id', 'no_bundle')))
+                
+                # Сортируем и показываем только первые 10 для читаемости
+                bot_apps.sort()
+                for i, (name, bundle_id) in enumerate(bot_apps[:10]):
+                    print(f"     {i+1}. {name} ({bundle_id})")
+                
+                if len(bot_apps) > 10:
+                    print(f"     ... и еще {len(bot_apps) - 10} приложений")
         else:
             # Это сообщение о выходе приложения
             # Используем имя бота если есть, иначе username
             bot_identifier = data['bot'] if data['bot'] else data.get('bot_username', 'unknown')
             
-            if bundle:
-                app_key = (bot_identifier, data['app_name'], bundle)
-            else:
-                app_key = (bot_identifier, data['app_name'], 'no_bundle')
+            # Создаем простой ключ без tuple
+            app_key = f"{bot_identifier}_{data['app_name']}"
             
             if app_key not in apps:
                 apps[app_key] = {
@@ -227,7 +329,12 @@ async def get_all_apps_from_channel():
                     'ban_date': '',
                     'status': 'Активно',
                     'url': data['url'] or '',
-                    'message_id': data['message_id']
+                    'message_id': data['message_id'],
+                    'geo_restrictions': data.get('geo_restrictions', ''),
+                    'sources': data.get('sources', ''),
+                    'has_onelink': data.get('has_onelink', False),
+                    'has_macro_system': data.get('has_macro_system', False),
+                    'redirect_to': ''
                 }
         
         # Прогресс
@@ -278,7 +385,12 @@ def prepare_sheets_data(apps):
             lifetime_formula,                        # F: Срок жизни (формула)
             app['status'],                           # G: Статус
             app['url'],                              # H: URL
-            str(app['message_id'])                   # I: ID сообщения
+            str(app['message_id']),                  # I: ID сообщения
+            app.get('geo_restrictions', ''),         # J: Гео-ограничения
+            app.get('sources', ''),                  # K: Источники трафика
+            'Да' if app.get('has_onelink', False) else 'Нет',  # L: OneLink
+            'Да' if app.get('has_macro_system', False) else 'Нет',  # M: Автосбор макросов
+            app.get('redirect_to', '')               # N: Перенаправлено на
         ]
         rows.append(row)
     
@@ -326,14 +438,14 @@ async def update_google_sheets(apps):
         
         # Форматируем таблицу
         format_requests = [
-            # Автоматическая ширина колонок
+            # Автоматическая ширина колонок (расширяем до 14 колонок)
             {
                 "autoResizeDimensions": {
                     "dimensions": {
                         "sheetId": 0,
                         "dimension": "COLUMNS",
                         "startIndex": 0,
-                        "endIndex": 9
+                        "endIndex": 14
                     }
                 }
             }
