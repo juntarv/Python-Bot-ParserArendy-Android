@@ -232,26 +232,15 @@ async def get_all_apps_from_channel():
                 app_match = False
                 app_name_in_db = app_data['app_name']
                 
-                print(f"   Сравниваем: '{search_name}' с '{app_name_in_db}'")
-                
-                # ОТЛАДКА: детальная информация о сравнении
-                if search_name == 'Plinko Tap':
-                    print(f"   🔍 ОТЛАДКА для Plinko Tap:")
-                    print(f"      search_name: '{search_name}' (тип: {type(search_name)}, длина: {len(search_name)})")
-                    print(f"      app_name_in_db: '{app_name_in_db}' (тип: {type(app_name_in_db)}, длина: {len(app_name_in_db)})")
-                    print(f"      Равны ли? {search_name == app_name_in_db}")
-                    print(f"      search_name байты: {search_name.encode('utf-8')}")
-                    print(f"      app_name_in_db байты: {app_name_in_db.encode('utf-8')}")
-                
                 # 1. Точное совпадение по названию
                 if search_name and app_name_in_db == search_name:
                     app_match = True
-                    print(f"   ✅ Точное совпадение")
+                    print(f"   ✅ Точное совпадение: '{search_name}'")
                 
                 # 2. Нормализованное совпадение (убираем регистр и пробелы)
                 elif search_name and app_name_in_db.lower().strip() == search_name.lower().strip():
                     app_match = True
-                    print(f"   ✅ Нормализованное совпадение")
+                    print(f"   ✅ Нормализованное совпадение: '{search_name}'")
                 
                 # 3. Совпадение с удалением эмодзи и специальных символов
                 elif search_name and app_name_in_db:
@@ -261,7 +250,7 @@ async def get_all_apps_from_channel():
                     
                     if clean_search == clean_db:
                         app_match = True
-                        print(f"   ✅ Совпадение после очистки: '{clean_search}' = '{clean_db}'")
+                        print(f"   ✅ Совпадение после очистки: '{search_name}'")
                 
                 # 4. Частичное совпадение для случаев с небольшими различиями
                 elif search_name and app_name_in_db:
@@ -271,7 +260,7 @@ async def get_all_apps_from_channel():
                     
                     if search_compact == db_compact:
                         app_match = True
-                        print(f"   ✅ Совпадение без пробелов")
+                        print(f"   ✅ Совпадение без пробелов: '{search_name}'")
                 
                 if app_match:
                     # Обновляем информацию о бане
@@ -288,8 +277,6 @@ async def get_all_apps_from_channel():
                     print(f"   📅 Дата бана: {data['date']}")
                     print(f"   📊 Новый статус: {apps[app_key]['status']}")
                     break
-                else:
-                    print(f"   ❌ Не совпало")
             
             if not found:
                 print(f"   ⚠️ НЕ НАЙДЕНО приложение для бана/редиректа")
@@ -367,21 +354,37 @@ async def get_all_apps_from_channel():
     
     return list(apps.values())
 
+def convert_date_for_sheets(date_str):
+    """Конвертирует дату из формата DD.MM.YYYY HH:MM в формат DD.MM.YYYY для отображения"""
+    if not date_str or date_str == '':
+        return ''
+    
+    try:
+        # Парсим дату в формате DD.MM.YYYY HH:MM
+        if ' ' in date_str:
+            date_str = date_str.split(' ')[0]  # Убираем время, оставляем только дату
+        
+        # Возвращаем в том же формате DD.MM.YYYY
+        return date_str
+    except:
+        return date_str  # Если не удалось конвертировать, возвращаем как есть
+
 def prepare_sheets_data(apps):
     """Подготавливает данные для Google Sheets"""
     rows = []
     
     for app in apps:
-        # Формула для срока жизни
-        # Если есть дата бана, считаем разницу, иначе считаем от даты выхода до сегодня
-        lifetime_formula = f'=IF(E{len(rows)+2}="", TODAY()-DATEVALUE(REGEXEXTRACT(D{len(rows)+2}, "\\d{{2}}.\\d{{2}}.\\d{{4}}")), DATEVALUE(REGEXEXTRACT(E{len(rows)+2}, "\\d{{2}}.\\d{{2}}.\\d{{4}}"))-DATEVALUE(REGEXEXTRACT(D{len(rows)+2}, "\\d{{2}}.\\d{{2}}.\\d{{4}}")))'
+        # Простая формула: Дата бана - Дата выхода
+        row_number = len(rows) + 2  # Номер текущей строки
+        # Простое вычитание дат (Google Sheets автоматически распознает формат DD.MM.YYYY)
+        lifetime_formula = f'=IF(E{row_number}="", "", E{row_number}-D{row_number})'
         
         row = [
             app['bot'],                              # A: Бот
             app['app_name'],                         # B: Название приложения
             app.get('bundle_id', ''),                # C: Bundle ID
-            app['release_date'],                     # D: Дата выхода
-            app['ban_date'],                         # E: Дата бана
+            convert_date_for_sheets(app['release_date']),  # D: Дата выхода (конвертированная)
+            convert_date_for_sheets(app['ban_date']),      # E: Дата бана (конвертированная)
             lifetime_formula,                        # F: Срок жизни (формула)
             app['status'],                           # G: Статус
             app['url'],                              # H: URL

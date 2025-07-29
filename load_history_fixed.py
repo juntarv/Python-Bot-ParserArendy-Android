@@ -161,35 +161,51 @@ def parse_message_by_bot(message, bot_username):
     
     # Обработка для других ботов (оставляем как было)
     else:
-    # Извлекаем название приложения
-    if result['type'] == 'ban' and 'ban_name_pattern' in parser:
-        name_match = re.search(parser['ban_name_pattern'], text)
-        if name_match:
-            name_text = name_match.group(1).strip()
-            name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-            result['name'] = name_text.strip()
-    elif parser.get('name_pattern'):
-        name_match = re.search(parser['name_pattern'], text)
-        if name_match:
-            name_text = name_match.group(1).strip()
+        # Извлекаем название приложения
+        if result['type'] == 'ban' and 'ban_name_pattern' in parser:
+            name_match = re.search(parser['ban_name_pattern'], text)
+            if name_match:
+                name_text = name_match.group(1).strip()
+                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
+                result['name'] = name_text.strip()
+        
+        # Пытаемся извлечь название из стандартного паттерна
+        if not result.get('name') and 'name_pattern' in parser:
+            name_match = re.search(parser['name_pattern'], text)
+            if name_match:
+                name_text = name_match.group(1).strip()
+                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
+                result['name'] = name_text.strip()
+        
+        # Если все еще нет названия, пытаемся найти любое упоминание в тексте
+        if not result.get('name'):
+            # Ищем паттерн: слово + название приложения
+            app_patterns = [
+                r'(?:Application|App|Приложение|Бан)\s+[🟣🔴⚫]*\s*(.+?)(?:\s+(?:BANNED|забанено|выпущено)|$)',
+                r'[🟣🔴⚫]\s+(.+?)(?:\s+(?:BANNED|забанено|выпущено)|$)',
+                r'(?:New|Новое)\s+(?:Application|App|Приложение)[:\s]+(.+?)(?:\n|$)',
+            ]
             
-            if parser.get('url_in_name'):
-                url_in_name = re.search(r'\(?(https?://[^\s\)]+)\)?', name_text)
-                if url_in_name:
-                    if not result['url']:
-                        result['url'] = url_in_name.group(1)
-                    name_text = re.sub(r'\s*\(?(https?://[^\s\)]+)\)?', '', name_text).strip()
-            
-            result['name'] = name_text
-    
-    # Извлекаем bundle
-    if parser.get('bundle_pattern'):
-        bundle_match = re.search(parser['bundle_pattern'], text)
-        if bundle_match:
-            result['bundle'] = bundle_match.group(1).strip()
-    
-    # Если bundle не найден, но есть URL и нужно извлечь из него
-    if not result['bundle'] and parser.get('extract_bundle_from_url') and result['url']:
+            for pattern in app_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    name_text = match.group(1).strip()
+                    # Очищаем от эмодзи и лишних символов
+                    name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
+                    name_text = re.sub(r'\s*[^\w\s]+$', '', name_text)
+                    
+                    if len(name_text) > 3:  # Проверяем минимальную длину
+                        result['name'] = name_text.strip()
+                        break
+        
+        # Извлекаем Bundle ID
+        if 'bundle_pattern' in parser:
+            bundle_match = re.search(parser['bundle_pattern'], text)
+            if bundle_match:
+                result['bundle'] = bundle_match.group(1).strip()
+        
+        # Пытаемся извлечь Bundle ID из URL
+        if not result.get('bundle') and result.get('url'):
             result['bundle'] = extract_bundle_from_url(result['url'])
     
     # Извлекаем категорию (если есть)
@@ -416,7 +432,7 @@ async def load_history():
                         if 'traffic was redirected to' in message.text:
                             msg_type = 'redirect'
                         else:
-                        msg_type = 'ban'
+                            msg_type = 'ban'
                     elif '🎉 New iOS App 🎉' in message.text:
                         # iOS пропускаем
                         continue

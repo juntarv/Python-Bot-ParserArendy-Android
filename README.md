@@ -17,13 +17,22 @@ Advanced Telegram bot for monitoring competitor apps with Google Sheets integrat
 
 ```
 RentBot/
-├── main.py              # Main application launcher
-├── config.py            # Configuration settings
-├── load_history_fixed.py # Message history loader
-├── channel_to_sheets.py  # Google Sheets synchronization
-├── clean_channel.py     # Channel cleanup utilities
-├── requirements.txt     # Python dependencies
-└── credentials.json     # Google API credentials (create manually)
+├── main.py                    # 🚀 Главное меню приложения
+├── config.py                  # ⚙️ Настройки конфигурации
+├── load_history_fixed.py      # 📡 Загрузка истории сообщений
+├── channel_to_sheets.py       # 📊 Синхронизация с Google Sheets  
+├── clean_channel.py           # 🧹 Очистка канала
+├── requirements.txt           # 📋 Python зависимости
+├── README.md                  # 📖 Документация
+├── sessions/                  # 📂 Telegram сессии
+│   ├── *.session             # Файлы авторизации
+│   └── *.session-journal     # Журналы сессий
+├── utils/                     # 📂 Вспомогательные файлы
+│   ├── App Examples.txt      # Примеры сообщений
+│   └── app_config.json       # Дополнительная конфигурация
+├── archive/                   # 📂 Отладочные скрипты
+│   └── test_*.py             # Тестовые файлы
+└── credentials.json           # 🔑 Google API ключи (создать вручную)
 ```
 
 ## 🚀 Quick Start
