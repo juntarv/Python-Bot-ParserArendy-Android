@@ -18,6 +18,31 @@ def extract_bundle_from_url(url):
         return match.group(1)
     return None
 
+def clean_app_name(name):
+    """Очищает название приложения от лишних символов"""
+    if not name:
+        return name
+    
+    # Убираем эмодзи в начале
+    name = re.sub(r'^[^\w\s]+\s*', '', name)
+    
+    # Убираем звездочки (markdown)
+    name = re.sub(r'\*+', '', name)
+    
+    # Убираем квадратные скобки и их содержимое
+    name = re.sub(r'\[.*?\]', '', name)
+    
+    # Убираем круглые скобки и их содержимое (может содержать URL)
+    name = re.sub(r'\([^)]*\)', '', name)
+    
+    # Убираем лишние символы в конце типа ], }, ), >
+    name = re.sub(r'[\]\}>)]+\s*$', '', name)
+    
+    # Убираем лишние пробелы
+    name = re.sub(r'\s+', ' ', name).strip()
+    
+    return name
+
 def extract_urls_from_message(message):
     """Извлекает URL из сообщения, включая гиперссылки"""
     urls = []
@@ -102,9 +127,7 @@ def parse_message_by_bot(message, bot_username):
             name_match = re.search(parser['name_pattern'], text, re.IGNORECASE)
             if name_match:
                 name_text = name_match.group(1).strip()
-                # Убираем эмодзи из начала названия
-                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-                result['name'] = name_text.strip()
+                result['name'] = clean_app_name(name_text)
             
             # Извлекаем гео-ограничения
             if parser.get('geo_pattern'):
@@ -131,9 +154,7 @@ def parse_message_by_bot(message, bot_username):
             ban_name_match = re.search(parser['ban_name_pattern'], text)
             if ban_name_match:
                 name_text = ban_name_match.group(1).strip()
-                # Убираем эмодзи
-                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-                result['name'] = name_text.strip()
+                result['name'] = clean_app_name(name_text)
             
             # Ищем URL в скобках
             if not result['url']:
@@ -166,17 +187,15 @@ def parse_message_by_bot(message, bot_username):
             name_match = re.search(parser['ban_name_pattern'], text)
             if name_match:
                 name_text = name_match.group(1).strip()
-                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-                result['name'] = name_text.strip()
+                result['name'] = clean_app_name(name_text)
         
         # Пытаемся извлечь название из стандартного паттерна
         if not result.get('name') and 'name_pattern' in parser:
             name_match = re.search(parser['name_pattern'], text)
             if name_match:
                 name_text = name_match.group(1).strip()
-                name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-                result['name'] = name_text.strip()
-        
+                result['name'] = clean_app_name(name_text)
+            
         # Если все еще нет названия, пытаемся найти любое упоминание в тексте
         if not result.get('name'):
             # Ищем паттерн: слово + название приложения
@@ -190,12 +209,10 @@ def parse_message_by_bot(message, bot_username):
                 match = re.search(pattern, text, re.IGNORECASE)
                 if match:
                     name_text = match.group(1).strip()
-                    # Очищаем от эмодзи и лишних символов
-                    name_text = re.sub(r'^[^\w\s]+\s*', '', name_text)
-                    name_text = re.sub(r'\s*[^\w\s]+$', '', name_text)
+                    cleaned_name = clean_app_name(name_text)
                     
-                    if len(name_text) > 3:  # Проверяем минимальную длину
-                        result['name'] = name_text.strip()
+                    if len(cleaned_name) > 3:  # Проверяем минимальную длину
+                        result['name'] = cleaned_name
                         break
         
         # Извлекаем Bundle ID
@@ -203,7 +220,7 @@ def parse_message_by_bot(message, bot_username):
             bundle_match = re.search(parser['bundle_pattern'], text)
             if bundle_match:
                 result['bundle'] = bundle_match.group(1).strip()
-        
+    
         # Пытаемся извлечь Bundle ID из URL
         if not result.get('bundle') and result.get('url'):
             result['bundle'] = extract_bundle_from_url(result['url'])
@@ -214,9 +231,7 @@ def parse_message_by_bot(message, bot_username):
         if category_match:
             result['category'] = category_match.group(1).strip()
     
-    # Определяем, является ли это Bundle (по тексту)
-    if 'bundle' in text.lower() and result['type'] == 'new_app':
-        result['is_bundle'] = True
+    # Bundle ID просто извлекается в соответствующее поле, не влияет на тип
     
     return result
 
@@ -308,13 +323,9 @@ def format_unified_message(parsed_data, bot_username, bot_display_name, message_
     
     msg_type = parsed_data.get('type', 'other')
     
-    # Для bundle приложений используем специальный эмодзи
-    if parsed_data.get('is_bundle') and msg_type == 'new_app':
-        emoji = emoji_map.get('bundle', '📦')
-        msg_type_display = f"{msg_type} (Bundle)"
-    else:
-        emoji = emoji_map.get(msg_type, '📨')
-        msg_type_display = msg_type
+    # Используем обычный эмодзи для типа сообщения
+    emoji = emoji_map.get(msg_type, '📨')
+    msg_type_display = msg_type
     
     # Базовая информация (одинаковая для всех ботов)
     forward_text = f"""{emoji} **История от @{bot_username}**

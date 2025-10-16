@@ -1,188 +1,220 @@
-# 🤖 RentBot - Competitor Monitoring System
+# 🤖 RentBot - Система мониторинга конкурентов
 
-Advanced Telegram bot for monitoring competitor apps with Google Sheets integration.
+Автоматизированная система для сбора и анализа данных о мобильных приложениях от ботов-конкурентов в Telegram.
 
-## ✨ Features
+## 📋 Описание проекта
 
-- **Multi-Bot Monitoring**: Track messages from multiple competitor bots
-- **Unified Message Format**: Consistent formatting regardless of source bot
-- **Ban Tracking**: Automatic detection and tracking of app bans and redirects
-- **Google Sheets Integration**: Real-time synchronization with spreadsheets
-- **Bundle Detection**: Special handling for app bundles
-- **Geo-Restrictions Tracking**: Monitor geographical limitations
-- **OneLink Support**: Track OneLink traffic redirection
-- **Real-time Processing**: Efficient message filtering and forwarding
+RentBot собирает сообщения от ботов-конкурентов, парсит информацию о новых приложениях и банах, форматирует данные в единый стандарт и синхронизирует с Google Sheets для удобного анализа.
 
-## 🏗️ Architecture
+### 🎯 Основные функции:
+- 📨 Сбор сообщений от конкурентных ботов
+- 🔄 Парсинг и форматирование данных
+- 📊 Автоматическое обновление Google Sheets
+- 📈 Отслеживание жизненного цикла приложений
+- 🚫 Мониторинг банов и переадресаций
+
+## 🚀 Быстрый старт
+
+### 1. Настройка Telegram API
+
+Откройте файл `config.py` и заполните данные Telegram API:
+
+```python
+# ========== TELEGRAM API ==========
+API_ID = 12345678  # Ваш API ID от https://my.telegram.org
+API_HASH = 'your_api_hash_here'  # Ваш API Hash
+
+# ========== КАНАЛЫ ==========
+MY_CHANNEL_ID = -1001234567890  # ID вашего канала для пересылки
+```
+
+**Как получить API данные:**
+1. Перейдите на https://my.telegram.org
+2. Войдите в аккаунт
+3. Создайте приложение в разделе "API development tools"
+4. Скопируйте `api_id` и `api_hash`
+
+**Как получить ID канала:**
+1. Добавьте бота @userinfobot в ваш канал
+2. Отправьте команду `/start`
+3. Скопируйте ID канала (начинается с -100)
+
+### 2. Настройка Google Sheets
+
+#### 2.1 Создание сервисного аккаунта:
+1. Перейдите в [Google Cloud Console](https://console.cloud.google.com/)
+2. Создайте новый проект или выберите существующий
+3. Включите Google Sheets API
+4. Создайте сервисный аккаунт
+5. Скачайте JSON файл с ключами
+
+#### 2.2 Настройка в config.py:
+```python
+# ========== GOOGLE SHEETS ==========
+GOOGLE_CREDENTIALS_FILE = 'path/to/your/credentials.json'
+SPREADSHEET_ID = 'your_spreadsheet_id_here'
+SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/your_spreadsheet_id_here'
+```
+
+**Как получить SPREADSHEET_ID:**
+1. Создайте новую Google Таблицу
+2. Скопируйте ID из URL: `https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit`
+3. Предоставьте доступ сервисному аккаунту (email из JSON файла)
+
+### 3. Настройка ботов-конкурентов
+
+В файле `config.py` настройте список отслеживаемых ботов:
+
+```python
+# ========== БОТЫ КОНКУРЕНТОВ ==========
+COMPETITOR_BOTS = [
+    'banda_rent_apps_bot',    # Banda Apps
+    'wwapps_bot',             # WildWildApps  
+    'trident_appbot',         # Trident Apps
+    # Добавьте других ботов здесь
+]
+```
+
+**Активация/деактивация ботов:**
+- Уберите `#` чтобы активировать бота
+- Добавьте `#` чтобы деактивировать бота
+
+## 📖 Использование
+
+### 🔄 Основной сбор данных
+
+Запустите главный скрипт для сбора всех сообщений:
+
+```bash
+python load_history_fixed.py
+```
+
+**Что происходит:**
+1. Подключение к Telegram
+2. Сбор сообщений от активных ботов (за последние 60 дней)
+3. Парсинг и фильтрация сообщений
+4. Пересылка в ваш канал в едином формате
+5. Статистика по результатам
+
+### 📊 Синхронизация с Google Sheets
+
+#### Для всех ботов сразу:
+```bash
+python channel_to_sheets.py
+```
+
+#### Для конкретных ботов:
+```bash
+# Banda Apps
+python banda_to_sheets.py
+
+# WWApps  
+python wwapps_to_sheets.py
+
+# Trident Apps
+python trident_to_sheets.py
+```
+
+**Что создается в Google Sheets:**
+- Отдельный лист для каждого бота
+- Колонки: Бот, Название, Bundle ID, Дата выхода, Дата бана, Срок жизни, Статус, URL
+- Автоматические формулы для расчета срока жизни
+
+### 🧹 Очистка канала
+
+Перед новым сбором данных очистите канал:
+
+```bash
+python clean_channel.py
+```
+
+## ⚙️ Конфигурация
+
+### Настройка парсеров ботов
+
+В `config.py` можно настроить паттерны парсинга для каждого бота:
+
+```python
+BOT_PARSERS = {
+    'banda_rent_apps_bot': {
+        'new_app_patterns': [r'✅ Application.*added'],
+        'ban_patterns': [r'‼️ Application.*BANNED'],
+        'skip_patterns': [r'Only for traffic through OneLink'],
+        # ... другие настройки
+    }
+}
+```
+
+### Настройка периода сбора
+
+```python
+# Количество дней для загрузки истории
+DAYS_TO_LOAD = 60
+```
+
+## 📁 Структура проекта
 
 ```
 RentBot/
-├── main.py                    # 🚀 Главное меню приложения
-├── config.py                  # ⚙️ Настройки конфигурации
-├── load_history_fixed.py      # 📡 Загрузка истории сообщений
-├── channel_to_sheets.py       # 📊 Синхронизация с Google Sheets  
-├── clean_channel.py           # 🧹 Очистка канала
-├── requirements.txt           # 📋 Python зависимости
-├── README.md                  # 📖 Документация
-├── sessions/                  # 📂 Telegram сессии
-│   ├── *.session             # Файлы авторизации
-│   └── *.session-journal     # Журналы сессий
-├── utils/                     # 📂 Вспомогательные файлы
-│   ├── App Examples.txt      # Примеры сообщений
-│   └── app_config.json       # Дополнительная конфигурация
-├── archive/                   # 📂 Отладочные скрипты
-│   └── test_*.py             # Тестовые файлы
-└── credentials.json           # 🔑 Google API ключи (создать вручную)
+├── config.py                 # Основная конфигурация
+├── load_history_fixed.py     # Главный скрипт сбора
+├── channel_to_sheets.py      # Синхронизация с Google Sheets
+├── clean_channel.py          # Очистка канала
+├── banda_to_sheets.py        # Синхронизация Banda Apps
+├── wwapps_to_sheets.py       # Синхронизация WWApps
+├── trident_to_sheets.py      # Синхронизация Trident Apps
+├── App Examples.txt          # Примеры сообщений ботов
+├── sessions/                 # Сессии Telegram
+└── credentials.json          # Ключи Google Sheets (не в git)
 ```
 
-## 🚀 Quick Start
+## 🔧 Решение проблем
 
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Ошибки авторизации Telegram
+1. Проверьте правильность `API_ID` и `API_HASH`
+2. Удалите файлы сессий в папке `sessions/`
+3. Запустите скрипт заново для повторной авторизации
 
-2. **Configure Settings**
-   - Edit `config.py` with your Telegram API credentials
-   - Set up your channel ID and competitor bot list
-   - Configure Google Sheets integration
+### Ошибки Google Sheets
+1. Проверьте путь к `credentials.json`
+2. Убедитесь что сервисный аккаунт имеет доступ к таблице
+3. Проверьте правильность `SPREADSHEET_ID`
 
-3. **Setup Google Sheets API**
-   - Create credentials.json from Google Cloud Console
-   - Enable Google Sheets API
-   - Share your spreadsheet with the service account email
+### Проблемы с парсингом
+1. Проверьте примеры сообщений в `App Examples.txt`
+2. Обновите паттерны в `BOT_PARSERS` в `config.py`
+3. Используйте отладочные скрипты для анализа
 
-4. **Run Application**
-   ```bash
-   python main.py
-   ```
+## 📈 Мониторинг результатов
 
-## ⚙️ Configuration
+### В Telegram канале:
+- Сообщения в едином формате
+- Эмодзи-индикаторы типов (🚀 новые, ❌ баны)
+- Полная информация о приложениях
 
-### Telegram API Settings
-- `API_ID`: Your Telegram API ID
-- `API_HASH`: Your Telegram API hash
-- `PHONE`: Your phone number
-- `MY_CHANNEL_ID`: Target channel for message forwarding
+### В Google Sheets:
+- Отдельные листы по ботам
+- Автоматический расчет срока жизни
+- Фильтры и сортировки
+- Статистика по статусам
 
-### Bot Monitoring
-- `COMPETITOR_BOTS`: List of competitor bot usernames
-- `BOT_PARSERS`: Custom parsing rules for each bot
-- `KEYWORDS`: Filter keywords for message relevance
+## 🛡️ Безопасность
 
-### Google Sheets
-- `SPREADSHEET_ID`: Your Google Sheets document ID
-- `SHEET_NAME`: Target worksheet name
-- `GOOGLE_CREDENTIALS_FILE`: Path to credentials.json
+- Не публикуйте `credentials.json` в git
+- Не делитесь `API_HASH` и токенами
+- Используйте отдельный аккаунт для ботов
+- Регулярно обновляйте ключи доступа
 
-## 📊 Supported Bot Formats
+## 📞 Поддержка
 
-### Banda Apps
-- ✅ New Android App announcements
-- ✅ Ban notifications with redirect tracking
-- ✅ Geo-restrictions parsing
-- ✅ OneLink support detection
-- ✅ Traffic source information
-
-### WWApps Bot
-- ✅ Application releases
-- ✅ Bundle detection
-- ✅ Category classification
-
-### TDApps Bot
-- ✅ New app notifications
-- ✅ Ban tracking
-- ✅ Package name extraction
-
-## 🔧 Advanced Features
-
-### Message Parsing
-Each bot has custom parsing rules defined in `BOT_PARSERS` configuration:
-- Pattern matching for different message types
-- URL extraction and bundle ID parsing
-- Geo-restriction and source tracking
-- Redirect chain analysis
-
-### Google Sheets Integration
-Automatic data synchronization including:
-- App release dates
-- Ban dates and status updates
-- Lifetime calculations
-- Traffic source information
-- OneLink support status
-
-### Obfuscation
-Code includes obfuscation techniques for production deployment:
-- Function name obfuscation
-- Variable name encoding
-- Entry point masking
-
-## 📈 Usage Examples
-
-### Load Message History
-```python
-python main.py
-# Select option 1: Load message history
-```
-
-### Sync with Google Sheets
-```python
-python main.py
-# Select option 3: Synchronize with Google Sheets
-```
-
-### Test Configuration
-```python
-python main.py
-# Select option 7: Test mode
-```
-
-## 🛡️ Security Features
-
-- Encrypted session storage
-- Rate limiting protection
-- Error handling and recovery
-- Flood protection mechanisms
-
-## 📋 Data Schema
-
-Google Sheets columns:
-- **Bot**: Source bot identifier
-- **App Name**: Application title
-- **Bundle ID**: Android package name
-- **Release Date**: First detection date
-- **Ban Date**: Ban detection date
-- **Lifetime**: Calculated app lifespan
-- **Status**: Current app status
-- **URL**: Google Play Store link
-- **Geo Restrictions**: Geographical limitations
-- **Traffic Sources**: Supported traffic sources
-- **OneLink**: OneLink support status
-- **Redirect Target**: Redirect destination (if banned)
-
-## 🔍 Monitoring Capabilities
-
-- Real-time message processing
-- Historical data analysis
-- Ban pattern detection
-- Traffic redirection tracking
-- Performance metrics
-
-## ⚡ Performance
-
-- Optimized for high-volume message processing
-- Efficient API usage with rate limiting
-- Parallel processing capabilities
-- Memory-optimized data structures
-
-## 🤝 Contributing
-
-This is a production system with proprietary enhancements. Contact the development team for collaboration opportunities.
-
-## 📄 License
-
-Proprietary - All rights reserved
+При возникновении проблем:
+1. Проверьте логи в консоли
+2. Убедитесь в правильности конфигурации
+3. Проверьте доступы к API
+4. Обновите зависимости: `pip install -r requirements.txt`
 
 ---
 
-**Note**: This system is designed for legitimate competitive analysis and monitoring purposes. Ensure compliance with all applicable terms of service and regulations. 
+**Автор:** RentBot Team  
+**Версия:** 2.0  
+**Последнее обновление:** Июль 2025

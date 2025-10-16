@@ -2,6 +2,7 @@
   "selected_bots": [
     "banda_rent_apps_bot",
     "wwapps_bot",
+    "trident_appbot",
     "td_appsbot"
   ],
   "target_channel": -1002568412343,

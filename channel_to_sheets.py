@@ -12,6 +12,31 @@ client = TelegramClient('sheets_session', API_ID, API_HASH)
 # Настройка Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
+def clean_app_name(name):
+    """Очищает название приложения от лишних символов"""
+    if not name:
+        return name
+    
+    # Убираем эмодзи в начале
+    name = re.sub(r'^[^\w\s]+\s*', '', name)
+    
+    # Убираем звездочки (markdown)
+    name = re.sub(r'\*+', '', name)
+    
+    # Убираем квадратные скобки и их содержимое
+    name = re.sub(r'\[.*?\]', '', name)
+    
+    # Убираем круглые скобки и их содержимое (может содержать URL)
+    name = re.sub(r'\([^)]*\)', '', name)
+    
+    # Убираем лишние символы в конце типа ], }, ), >
+    name = re.sub(r'[\]\}>)]+\s*$', '', name)
+    
+    # Убираем лишние пробелы
+    name = re.sub(r'\s+', ' ', name).strip()
+    
+    return name
+
 def init_google_sheets():
     """Инициализация Google Sheets API"""
     try:
@@ -86,24 +111,23 @@ def parse_message_data(text):
     if type_match:
         type_str = type_match.group(1).strip()
         data['type'] = type_str
-        data['is_bundle'] = '(Bundle)' in type_str
     
     # Извлекаем название приложения (разные поля в зависимости от типа)
     app_match = re.search(r'📱\s*(?:\*\*)?Приложение:(?:\*\*)?\s*(.+?)(?:\n|$)', clean_text)
     if not app_match:
         app_match = re.search(r'📱\s*(?:\*\*)?Забанено:(?:\*\*)?\s*(.+?)(?:\n|$)', clean_text)
     if app_match:
-        data['app_name'] = app_match.group(1).strip()
+        data['app_name'] = clean_app_name(app_match.group(1).strip())
     
     # Для редиректов - извлекаем оригинальное и новое приложение
     if data['type'] == 'redirect':
         original_match = re.search(r'❌\s*Забанено:\s*(.+?)(?:\n|$)', clean_text)
         if original_match:
-            data['original_app'] = original_match.group(1).strip()
+            data['original_app'] = clean_app_name(original_match.group(1).strip())
         
         redirect_match = re.search(r'🔄\s*Перенаправлено на:\s*(.+?)(?:\n|$)', clean_text)
         if redirect_match:
-            data['redirect_to'] = redirect_match.group(1).strip()
+            data['redirect_to'] = clean_app_name(redirect_match.group(1).strip())
             # Для редиректов используем новое приложение как основное название
             data['app_name'] = data['redirect_to']
     
@@ -259,7 +283,7 @@ async def get_all_apps_from_channel():
                     db_compact = app_name_in_db.replace(' ', '').lower()
                     
                     if search_compact == db_compact:
-                        app_match = True
+                    app_match = True
                         print(f"   ✅ Совпадение без пробелов: '{search_name}'")
                 
                 if app_match:
